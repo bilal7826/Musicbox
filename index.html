@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Music Box</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1d1d1b;--mu:#6b6a65;--ac:#1d9e75;--bd:#e2e0d8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161615;--card:#222220;--tx:#f1efe8;--mu:#9a988f;--ac:#3ecf9a;--bd:#34332f}}
+:root[data-theme="dark"]{--bg:#161615;--card:#222220;--tx:#f1efe8;--mu:#9a988f;--ac:#3ecf9a;--bd:#34332f}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px system-ui,sans-serif;padding:16px 14px 190px;max-width:640px;margin-inline:auto}
+h1{font-size:22px;margin:4px 0 4px}h2{font-size:17px;margin:0 0 4px}
+p.h{color:var(--mu);font-size:14px;margin:0 0 14px}
+.box{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-bottom:14px}
+input,select,button{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:10px;width:100%}
+button{background:var(--ac);color:#fff;border:0;font-weight:600;margin-top:8px}
+button.s{background:none;color:var(--mu);border:1px solid var(--bd);width:auto;margin:0;padding:6px 10px;font-weight:400}
+.row{display:flex;gap:8px}.row>*{flex:1}
+#msg{font-size:14px;color:var(--mu);margin-top:8px;min-height:18px}
+.chips{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:4px}
+.chip{flex:none;width:auto;margin:0;padding:6px 14px;background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:20px;font-weight:400}
+.chip.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.song,.catrow{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.song.pl{border-color:var(--ac)}
+.t{font-weight:600;overflow-wrap:anywhere;cursor:pointer}
+.m{display:flex;gap:6px;align-items:center;margin-top:8px}.m select{padding:6px;font-size:14px}
+.catrow{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.catrow b{cursor:pointer;flex:1}.catrow span{color:var(--mu);font-size:14px}
+.empty{color:var(--mu);text-align:center;padding:24px}
+.tab{display:none}.tab.on{display:block}
+#bottom{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px)}
+#bar{padding:10px 14px 6px}#bar audio{width:100%}
+#np{font-size:14px;color:var(--mu);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tabs{display:flex;border-top:1px solid var(--bd)}
+#tabs button{margin:0;border-radius:0;background:none;color:var(--mu);border:0;padding:12px 4px;font-weight:600;font-size:14px}
+#tabs button.on{color:var(--ac)}
+</style>
+</head>
+<body>
+<h1>🎵 Music Box</h1>
+
+<section id="t1" class="tab on">
+  <h2>1. Download</h2>
+  <p class="h">Paste a direct audio link and save it as MP3.</p>
+  <div class="box">
+    <input id="url" type="url" placeholder="https://example.com/song.mp3">
+    <select id="cat" style="margin-top:8px"></select>
+    <button id="dl">⬇ Download as MP3</button>
+    <button id="pick" class="s" style="width:100%;margin-top:8px">Or add files from phone</button>
+    <input id="file" type="file" accept="audio/*" multiple hidden>
+    <div id="msg"></div>
+  </div>
+</section>
+
+<section id="t2" class="tab">
+  <h2>2. Library</h2>
+  <p class="h">Your downloaded songs. Tap a title to play.</p>
+  <div class="chips" id="chips"></div>
+  <div id="list"></div>
+</section>
+
+<section id="t3" class="tab">
+  <h2>3. Categories</h2>
+  <p class="h">Organize your songs into groups.</p>
+  <div class="box"><div class="row"><input id="newname" placeholder="New category name"><button id="addcat" style="flex:none;width:auto;margin:0">Add</button></div></div>
+  <div id="catlist"></div>
+</section>
+
+<div id="bottom">
+  <div id="bar"><div id="np">Nothing playing</div><audio id="au" controls></audio></div>
+  <div id="tabs"><button data-t="t1" class="on">⬇ Download</button><button data-t="t2">🎧 Library</button><button data-t="t3">🗂 Categories</button></div>
+</div>
+
+<script>
+const $=i=>document.getElementById(i);
+let db,songs=[],cats=["General","Pop","Rock","Relaxing"],cur="All",playing=null,curUrl=null;
+try{const c=JSON.parse(localStorage.getItem("cats")||"null");if(c)cats=c}catch(e){}
+function saveCats(){try{localStorage.setItem("cats",JSON.stringify(cats))}catch(e){}}
+const open=indexedDB.open("musicbox",1);
+open.onupgradeneeded=()=>open.result.createObjectStore("s",{keyPath:"id",autoIncrement:true});
+open.onsuccess=()=>{db=open.result;load()};
+open.onerror=()=>say("Storage is not available");
+function tx(m){return db.transaction("s",m).objectStore("s")}
+function load(){tx("readonly").getAll().onsuccess=e=>{songs=e.target.result;draw()}}
+function put(o){return new Promise((r,j)=>{const q=tx("readwrite").put(o);q.onsuccess=()=>r();q.onerror=()=>j()})}
+function say(t){$("msg").textContent=t}
+function esc(s){return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function show(t){document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.id===t));document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));scrollTo(0,0)}
+$("tabs").onclick=e=>{if(e.target.dataset.t)show(e.target.dataset.t)};
+function draw(){
+  const keep=$("cat").value;
+  $("cat").innerHTML=cats.map(c=>`<option>${esc(c)}</option>`).join("");
+  if(cats.includes(keep))$("cat").value=keep;
+  $("chips").innerHTML=["All",...cats].map(c=>`<button class="chip ${c===cur?"on":""}" data-c="${esc(c)}">${esc(c)}</button>`).join("");
+  const l=songs.filter(s=>cur==="All"||s.cat===cur);
+  $("list").innerHTML=l.length?l.map(s=>`<div class="song ${s.id===playing?"pl":""}"><div class="t" data-p="${s.id}">${s.id===playing?"▶ ":""}${esc(s.name)}</div>
+  <div class="m"><select data-m="${s.id}">${cats.map(c=>`<option ${c===s.cat?"selected":""}>${esc(c)}</option>`).join("")}</select>
+  <button class="s" data-d="${s.id}">Delete</button></div></div>`).join(""):'<div class="empty">No songs here yet</div>';
+  $("catlist").innerHTML=cats.map(c=>`<div class="catrow"><b data-o="${esc(c)}">${esc(c)}</b><span>${songs.filter(s=>s.cat===c).length} songs</span><button class="s" data-r="${esc(c)}">Remove</button></div>`).join("");
+}
+$("chips").onclick=e=>{const c=e.target.dataset.c;if(c){cur=c;draw()}};
+$("list").onclick=e=>{
+  if(e.target.dataset.p)play(+e.target.dataset.p);
+  if(e.target.dataset.d){const id=+e.target.dataset.d;tx("readwrite").delete(id).onsuccess=()=>{songs=songs.filter(s=>s.id!==id);if(playing===id){playing=null}draw()}}
+};
+$("list").onchange=async e=>{const id=e.target.dataset.m;if(!id)return;const s=songs.find(x=>x.id==id);s.cat=e.target.value;await put(s);draw()};
+$("catlist").onclick=async e=>{
+  if(e.target.dataset.o){cur=e.target.dataset.o;draw();show("t2")}
+  if(e.target.dataset.r){
+    const c=e.target.dataset.r;if(cats.length<2)return;
+    if(!confirm('Remove "'+c+'"? Its songs move to another category.'))return;
+    cats=cats.filter(x=>x!==c);saveCats();
+    for(const s of songs.filter(s=>s.cat===c)){s.cat=cats[0];await put(s)}
+    if(cur===c)cur="All";draw();
+  }
+};
+$("addcat").onclick=()=>{const n=$("newname").value.trim();if(n&&!cats.includes(n)){cats.push(n);saveCats();$("newname").value="";draw()}};
+function play(id){
+  const s=songs.find(x=>x.id===id);if(!s)return;
+  if(curUrl)URL.revokeObjectURL(curUrl);
+  curUrl=URL.createObjectURL(s.blob);$("au").src=curUrl;$("au").play().catch(()=>{});
+  playing=id;$("np").textContent="▶ "+s.name;draw();
+  if("mediaSession"in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:s.name,artist:s.cat});
+}
+$("au").onended=()=>{const l=songs.filter(s=>cur==="All"||s.cat===cur);const i=l.findIndex(s=>s.id===playing);if(l[i+1])play(l[i+1].id)};
+$("dl").onclick=async()=>{
+  const u=$("url").value.trim();if(!u)return say("Paste a link first");
+  say("Downloading...");
+  try{
+    const r=await fetch(u);if(!r.ok)throw 0;
+    const b=await r.blob();
+    if(!/audio|octet|mpeg/.test(b.type)&&!/\.(mp3|m4a|wav|ogg|aac)(\?|$)/i.test(u))throw 1;
+    let n=decodeURIComponent(u.split("?")[0].split("/").pop()||"song").replace(/\.\w+$/,"")||"song";
+    await put({name:n,cat:$("cat").value,blob:b,t:Date.now()});
+    $("url").value="";say("✅ Saved: "+n+" — see it in Library");load();
+  }catch(x){say(x===1?"That link is not an audio file. A direct .mp3 link is needed.":"Download failed. The link must be a direct audio file, and the website may block downloads (YouTube-style links are not supported).")}
+};
+$("pick").onclick=()=>$("file").click();
+$("file").onchange=async e=>{for(const f of e.target.files)await put({name:f.name.replace(/\.\w+$/,""),cat:$("cat").value,blob:f,t:Date.now()});say("Files added — see them in Library");load()};
+draw();
+</script>
+</body>
+</html>

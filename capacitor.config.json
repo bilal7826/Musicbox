@@ -1,0 +1,6 @@
+{
+  "appId": "com.musicbox.app",
+  "appName": "Music Box",
+  "webDir": "www",
+  "plugins": { "CapacitorHttp": { "enabled": true } }
+}
